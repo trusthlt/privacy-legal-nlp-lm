@@ -599,6 +599,8 @@ if __name__ == "__main__":
     total_loss = 0
     losses = []
     snrs = []
+
+    # recover from checkpoint
     loss_path = os.path.join(training_args.output_dir, 'losses.npy')
     snr_path = os.path.join(training_args.output_dir, 'SNR.npy')
     if os.path.exists(loss_path):
@@ -612,37 +614,6 @@ if __name__ == "__main__":
 
     cur_step = initial_step
     start_step = (initial_step % steps_per_epoch) * accum_steps
-
-    if cur_step > 0 and (cur_step % training_args.eval_steps == 0 or cur_step == total_train_steps):
-        # ======================== Evaluating ==============================
-        num_eval_steps = len(datasets["validation"]) // eval_batch_size
-        eval_metrics = []
-        for val_step in tqdm(range(num_eval_steps), desc="Evaluating ...", position=2):
-            batch_idx = range(val_step * eval_batch_size, (val_step + 1) * eval_batch_size)
-            examples = [build_input(datasets['validation'][int(idx)], special_tokens) for idx in batch_idx]
-            model_inputs = data_collator(examples, pad_to_multiple_of=16)
-            # Model forward
-            model_inputs = shard(model_inputs.data)
-            metrics = p_eval_step(state.params, model_inputs)
-            eval_metrics.append(metrics)
-
-        # normalize eval metrics
-        eval_metrics = get_metrics(eval_metrics)
-        eval_metrics = jax.tree_map(jnp.mean, eval_metrics)
-
-        # Save metrics
-        if has_tensorboard and jax.process_index() == 0:
-            write_eval_metric(summary_writer, eval_metrics, cur_step)
-
-        # Update progress bar
-        epochs.desc = f"Step... ({cur_step} | Loss: {eval_metrics['loss']}, " \
-                      f"Acc_MLM: {eval_metrics['accuracy_lm']}, " \
-                      f"Acc_NSP: {eval_metrics['accuracy_nsp']})"
-        with open(os.path.join(training_args.output_dir, 'config.csv'), 'a') as f:
-            writer = csv.writer(f)
-            writer.writerow([f"[{datetime.datetime.now()}]-Step... ({cur_step} | Loss: {eval_metrics['loss']}, "
-                             f"Acc_MLM: {eval_metrics['accuracy_lm']}, "
-                             f"Acc_NSP: {eval_metrics['accuracy_nsp']})"])
 
     logger.info(f"init_mean_loss: {total_loss / (total_step + 1e-24)}, total_step = {total_step}, cur_step = {cur_step}"
                 f"Training batch size: {update_batch_size}, Number samples: {num_train_samples},"
@@ -666,6 +637,7 @@ if __name__ == "__main__":
 
         with tqdm(total=(num_steps - start_step) // accum_steps, desc="Iteration", position=1) as pbar:
             for step in range(start_step, num_steps):
+                # The dataset is pre-shuffled and sampled, otherwise randomly sample a batch at each step
                 batch_idx = range(step * train_batch_size, (step + 1) * train_batch_size)
                 examples = [build_input(datasets['train'][idx], special_tokens) for idx in batch_idx]
                 model_inputs = data_collator(examples, pad_to_multiple_of=16)

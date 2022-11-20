@@ -36,11 +36,12 @@ def argsparse():
     # general parameters
     parser.add_argument('--task_name', type=str, required=True,
                         choices=['casehold', 'overruling', 'ToS', 'ledgar'],
-                        help='name of the downstream task to train.')
+                        help='name of the downstream task to conduct.')
     parser.add_argument('--pretrained_weights', type=str, default='bert-base-uncased',
                         help='name or path of the pretrained BERT model.')
     parser.add_argument('--model_name', type=str, default='bert-base-uncased',
-                        help='name or type of the pretrained BERT model.')
+                        help='name or type of the pretrained BERT model, will be used to identify the caching path of'
+                             'tokenized inputs.')
     parser.add_argument('--eval', action='store_true',
                         help='whether only evaluate a model (otherwise, train a model).')
     parser.add_argument('--ckpt_path', type=str, default=None,
